@@ -1,0 +1,11 @@
+Procession:
+  Calculated BDrate = -28.685%
+
+H2_H3_AMS05:
+  Calculated BDrate = -49.279%
+
+Zombie:
+  Calculated BDrate = -24.964%
+
+WalkInPark:
+  Calculated BDrate = -35.689%

@@ -1,0 +1,41 @@
+# Large video files
+*.yuv
+*.bin
+
+# Compressed archives
+*.zip
+
+# Virtual environments
+fgopencv/
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.Python
+build/
+develop-eggs/
+dist/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary files
+.getOddYuv.sh.swp
+*.tmp
+
+# no need ppt
+*.pptx
+
+# Large data files (optional - uncomment if needed)
+# *.xlsx
+# *.xls
