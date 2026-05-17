@@ -3,35 +3,101 @@ import cv2
 import numpy as np
 from yuvProc import getOneFrame
 
-def phase_aligned_upscale_2x_v2(img):
+def phase_aligned_8tap_dctif_2x(img):
     """
-    優化版：零相位偏移雙線性插值 (Linear FIR)
-    採用邊界鏡像擴展 (Reflect Padding) 與全向量化切片運算，提升畫質與執行速度。
+    標準 VVC/HEVC 規格：零相位偏移可分離式 8-tap Luma DCT-IF 放大器
+    嚴格確保偶數座標完全對齊原圖，奇數點套用 8-tap 濾波器 [-1, 4, -11, 40, 40, -11, 4, -1] / 64
     """
     h, w = img.shape
     
-    # 1. 建立 2x 大小的畫布
-    out = np.empty((h * 2, w * 2), dtype=np.float32)
+    # --- Step 1: 水平方向放大 (H, W) -> (H, W * 2) ---
+    inter = np.empty((h, w * 2), dtype=np.float32)
+    # 偶數欄：完美複製原圖
+    inter[:, 0::2] = img
     
-    # 2. 偶數點 (Phase 0)：直接映射原圖像素
-    out[0::2, 0::2] = img
+    # 邊界擴展：8-tap 需要左右各補 4 像素
+    img_pad_h = np.pad(img, ((0, 0), (4, 4)), mode='reflect')
+    
+    # 奇數欄：精準擷取長度為 w 的 8 個鄰近卷積窗
+    p0_h = img_pad_h[:, 1 : w + 1]
+    p1_h = img_pad_h[:, 2 : w + 2]
+    p2_h = img_pad_h[:, 3 : w + 3]
+    p3_h = img_pad_h[:, 4 : w + 4] # 對應目前像素
+    p4_h = img_pad_h[:, 5 : w + 5] # 對應右方像素
+    p5_h = img_pad_h[:, 6 : w + 6]
+    p6_h = img_pad_h[:, 7 : w + 7]
+    p7_h = img_pad_h[:, 8 : w + 8]
+    
+    # 套用 8-tap 卷積權重
+    inter[:, 1::2] = (
+        -1.0 * p0_h + 4.0 * p1_h - 11.0 * p2_h + 40.0 * p3_h +
+         40.0 * p4_h - 11.0 * p5_h + 4.0 * p6_h - 1.0 * p7_h
+    ) / 64.0
 
-    #為了完美處理邊緣的奇數點，我們對原圖做鏡像擴展 (右方與下方各多補 1 像素)
-    # mode='reflect' 會讓邊緣向外延伸： 例如最後幾項為 [A, B, C] -> 擴展為 [A, B, C, B]
-    img_pad = np.pad(img, ((0, 1), (0, 1)), mode='reflect')
+    # --- Step 2: 垂直方向放大 (H, W * 2) -> (H * 2, W * 2) ---
+    out = np.empty((h * 2, w * 2), dtype=np.float32)
+    # 偶數列：直接複製水平放大的結果
+    out[0::2, :] = inter
+    
+    # 邊界擴展：上下各補 4 像素
+    inter_pad_v = np.pad(inter, ((4, 4), (0, 0)), mode='reflect')
+    
+    # 奇數列：精準擷取長度為 h 的 8 個鄰近卷積窗
+    p0_v = inter_pad_v[1 : h + 1, :]
+    p1_v = inter_pad_v[2 : h + 2, :]
+    p2_v = inter_pad_v[3 : h + 3, :]
+    p3_v = inter_pad_v[4 : h + 4, :] # 對應目前列
+    p4_v = inter_pad_v[5 : h + 5, :] # 對應下方列
+    p5_v = inter_pad_v[6 : h + 6, :]
+    p6_v = inter_pad_v[7 : h + 7, :]
+    p7_v = inter_pad_v[8 : h + 8, :]
+    
+    out[1::2, :] = (
+        -1.0 * p0_v + 4.0 * p1_v - 11.0 * p2_v + 40.0 * p3_v +
+         40.0 * p4_v - 11.0 * p5_v + 4.0 * p6_v - 1.0 * p7_v
+    ) / 64.0
 
-    # 3. 奇數點 (水平方向)：目前像素與右方像素的平均
-    # out[0::2, 1::2] 對應的是 img 偶數列、奇數欄
-    out[0::2, 1::2] = (img_pad[:-1, :-1] + img_pad[:-1, 1:]) * 0.5
+    return out
 
-    # 4. 奇數點 (垂直方向)：目前像素與下方像素的平均
-    # out[1::2, 0::2] 對應的是 img 奇數列、偶數欄
-    out[1::2, 0::2] = (img_pad[:-1, :-1] + img_pad[1:, :-1]) * 0.5
+def phase_aligned_4tap_upscale_2x(img):
+    """
+    修正版：零相位偏移可分離式 4-tap (Bicubic 級別) 放大器
+    嚴格確保偶數座標完全對齊原圖，切片長度完美匹配 w 與 h。
+    """
+    h, w = img.shape
+    
+    # --- Step 1: 水平方向放大 (H, W) -> (H, W * 2) ---
+    inter = np.empty((h, w * 2), dtype=np.float32)
+    # 偶數欄：完美複製原圖
+    inter[:, 0::2] = img
+    
+    # 邊界擴展 (左右各補 2 像素)
+    img_pad_h = np.pad(img, ((0, 0), (2, 2)), mode='reflect')
+    
+    # 奇數欄：精準擷取長度為 w (1920) 的 4 個鄰近卷積窗
+    p0_h = img_pad_h[:, 1 : w + 1]
+    p1_h = img_pad_h[:, 2 : w + 2]
+    p2_h = img_pad_h[:, 3 : w + 3]
+    p3_h = img_pad_h[:, 4 : w + 4]
+    
+    # 套用 Catmull-Rom Bicubic 權重 [-1/16, 9/16, 9/16, -1/16]
+    inter[:, 1::2] = -0.0625 * p0_h + 0.5625 * p1_h + 0.5625 * p2_h - 0.0625 * p3_h
 
-    # 5. 對角線中心點：周圍四個像素的平均
-    # out[1::2, 1::2] 對應的是 img 奇數列、奇數欄
-    out[1::2, 1::2] = (img_pad[:-1, :-1] + img_pad[:-1, 1:] + 
-                       img_pad[1:, :-1] + img_pad[1:, 1:]) * 0.25
+    # --- Step 2: 垂直方向放大 (H, W * 2) -> (H * 2, W * 2) ---
+    out = np.empty((h * 2, w * 2), dtype=np.float32)
+    # 偶數列：直接複製水平放大的結果
+    out[0::2, :] = inter
+    
+    # 邊界擴展 (上下各補 2 像素)
+    inter_pad_v = np.pad(inter, ((2, 2), (0, 0)), mode='reflect')
+    
+    # 奇數列：精準擷取長度為 h (1080) 的 4 個鄰近卷積窗
+    p0_v = inter_pad_v[1 : h + 1, :]
+    p1_v = inter_pad_v[2 : h + 2, :]
+    p2_v = inter_pad_v[3 : h + 3, :]
+    p3_v = inter_pad_v[4 : h + 4, :]
+    
+    out[1::2, :] = -0.0625 * p0_v + 0.5625 * p1_v + 0.5625 * p2_v - 0.0625 * p3_v
 
     return out
 
@@ -77,10 +143,24 @@ def upscale_frame(frame_base, width_base=1920, height_base=1080):
     #u_up = cv2.resize(u, (width_base, height_base), interpolation=cv2.INTER_CUBIC)
     #v_up = cv2.resize(v, (width_base, height_base), interpolation=cv2.INTER_CUBIC)
     
+    # 使用 8-tap Lanczos 插值取代手刻的 2-tap
+    #y_up = cv2.resize(y, (width_base * 2, height_base * 2), interpolation=cv2.INTER_LANCZOS4)
+    #u_up = cv2.resize(u, (width_base, height_base), interpolation=cv2.INTER_LANCZOS4)
+    #v_up = cv2.resize(v, (width_base, height_base), interpolation=cv2.INTER_LANCZOS4)
+    # +40% fuck
+
     # 2. 替換為我們自定義的零相位偏移放大器
-    y_up = phase_aligned_upscale_2x(y)
-    u_up = phase_aligned_upscale_2x(u)
-    v_up = phase_aligned_upscale_2x(v)
+    #y_up = phase_aligned_upscale_2x(y)
+    #u_up = phase_aligned_upscale_2x(u)
+    #v_up = phase_aligned_upscale_2x(v)
+    # -30.937%, -19.550%, -17.964%, -8.115%
+
+    #y_up = phase_aligned_4tap_upscale_2x(y)
+    # Y: 4 tap -33.783%, -22.243%
+    y_up = phase_aligned_8tap_dctif_2x(y)
+    # Y: 8 tap -35.340%, -23.036%, -22.237%, -11.003%
+    u_up = phase_aligned_4tap_upscale_2x(u)
+    v_up = phase_aligned_4tap_upscale_2x(v)
 
     # 3. 限制 10-bit 數值區間 (0-1023) 並轉回 uint16
     return {
