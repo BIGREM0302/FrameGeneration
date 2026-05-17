@@ -92,14 +92,14 @@ The first stage reconstructs a high-resolution 4K image from a 1080p frame.
 The problem can be written as:
 
 $$
-I_{HR} = \mathcal{U}(I_{LR})
+I_{HR} = U(I_{LR})
 $$
 
 where:
 
 - $I_{LR}$ = low-resolution image
 - $I_{HR}$ = reconstructed high-resolution image
-- $\mathcal{U}$ = upsampling operator
+- $U$ = upsampling operator
 
 ---
 
@@ -153,11 +153,11 @@ This is critical for:
 The simplest interpolation is:
 
 $$
-I(x+\frac12)
+I(x+0.5)
 =
-\frac12 I(x)
+0.5I(x)
 +
-\frac12 I(x+1)
+0.5I(x+1)
 $$
 
 This corresponds to the FIR kernel:
@@ -179,12 +179,7 @@ phase_aligned_upscale_2x()
 The project uses a Catmull-Rom style cubic interpolation filter:
 
 $$
-\left[
--\frac1{16},
-\frac9{16},
-\frac9{16},
--\frac1{16}
-\right]
+[-1/16,\ 9/16,\ 9/16,\ -1/16]
 $$
 
 Implemented as:
@@ -198,13 +193,13 @@ The interpolated pixel is:
 $$
 p'
 =
--\frac1{16}p_0
+(-1/16)p_0
 +
-\frac9{16}p_1
+(9/16)p_1
 +
-\frac9{16}p_2
+(9/16)p_2
 -
-\frac1{16}p_3
+(1/16)p_3
 $$
 
 Compared to bilinear interpolation:
@@ -236,7 +231,7 @@ The interpolated pixel is:
 $$
 p'
 =
-\frac{
+(
 -1p_0
 +4p_1
 -11p_2
@@ -245,7 +240,7 @@ p'
 -11p_5
 +4p_6
 -1p_7
-}{64}
+)/64
 $$
 
 This filter is derived from:
@@ -368,7 +363,7 @@ $$
 Using Taylor expansion:
 
 $$
-I_x u + I_y v + I_t = 0
+I_xu + I_yv + I_t = 0
 $$
 
 where:
@@ -386,7 +381,7 @@ Farneback approximates local neighborhoods using quadratic polynomials:
 $$
 f(x)
 =
-x^T A x + b^T x + c
+x^TAx + b^Tx + c
 $$
 
 Motion is estimated by matching polynomial coefficients.
@@ -505,15 +500,9 @@ The reconstructed pixel is:
 $$
 I_{final}
 =
-\frac{
-w_p I_p
-+
-w_n I_n
-+
-w_u I_u
-}{
-w_p + w_n + w_u
-}
+(w_pI_p + w_nI_n + w_uI_u)
+/
+(w_p + w_n + w_u)
 $$
 
 where:
@@ -577,7 +566,7 @@ $$
 Farneback complexity is approximately:
 
 $$
-O(HW \cdot L)
+O(HWL)
 $$
 
 where:
