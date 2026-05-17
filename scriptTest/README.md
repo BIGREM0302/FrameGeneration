@@ -465,23 +465,17 @@ using confidence-based weights.
 Differences are computed as:
 
 $$
-d_{prev}
-=
-|I_{warp-prev} - I_{up}|
+d_{prev} = \lvert I_{warp-prev} - I_{up} \rvert
 $$
 
 $$
-d_{next}
-=
-|I_{warp-next} - I_{up}|
+d_{next} = \lvert I_{warp-next} - I_{up} \rvert
 $$
 
 Weights are:
 
 $$
-w
-=
-e^{-d/\sigma}
+w = e^{-d/\sigma}
 $$
 
 where:
@@ -498,11 +492,9 @@ This behaves similarly to a bilateral weighting function.
 The reconstructed pixel is:
 
 $$
-I_{final}
-=
-(w_pI_p + w_nI_n + w_uI_u)
-/
-(w_p + w_n + w_u)
+I_{final} =
+\frac{w_pI_p + w_nI_n + w_uI_u}
+{w_p + w_n + w_u}
 $$
 
 where:
