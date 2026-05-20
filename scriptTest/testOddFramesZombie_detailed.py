@@ -227,3 +227,35 @@ if videoPSNRBeforeV is not None:
 ####################################################################################
 
 print('\n================ Diagnosis Hints ================')
+
+for i, stats in enumerate(all_qp_stats):
+    qp = stats['qp']
+    delta_yuv = videoPSNRAfterYUV[i] - videoPSNRBefore[i]
+
+    print(f'\nQP {qp}:')
+
+    if delta_yuv > 0:
+        print(f'  ✅ YUV average improved by {delta_yuv:+.4f} dB')
+    else:
+        print(f'  ❌ YUV average dropped by {delta_yuv:+.4f} dB')
+
+    # 判斷 channel 問題
+    channel_means = {
+        'Y': stats['Y_mean'],
+        'U': stats['U_mean'],
+        'V': stats['V_mean'],
+    }
+    weakest_channel = min(channel_means, key=channel_means.get)
+
+    print(f'  Weakest average channel: {weakest_channel}')
+    print(f'  Worst YUV frame: {stats["worstYUVIdx"]}, YUV PSNR = {stats["YUV_min"]:.4f} dB')
+
+    if stats['YUV_std'] > 1.0:
+        print(f'  ⚠️ YUV std is high ({stats["YUV_std"]:.4f}), quality may be unstable across frames.')
+
+    if weakest_channel == 'Y':
+        print('  Hint: Y channel is weak. Check luma optical flow, warping, ML fusion, and edge/detail preservation.')
+    elif weakest_channel == 'U':
+        print('  Hint: U channel is weak. Check chroma flow scaling, UV upsampling, and chroma alignment.')
+    elif weakest_channel == 'V':
+        print('  Hint: V channel is weak. Check chroma flow scaling, UV upsampling, and chroma alignment.')
