@@ -1,2 +1,6 @@
+--extra-index-url https://download.pytorch.org/whl/cu126
+
 numpy
 opencv-python-headless
+tqdm
+torch
