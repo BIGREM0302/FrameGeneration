@@ -17,21 +17,26 @@ REFINE_MODEL_PATH = "flow_refine_net_test21.pth"
 PRECOMPUTED_DIR = "./precomputed_flow_pt"
 
 # =========================================================================
-# 1. 網路架構 (完美沿用你的高配版 SEBlock + ResidualBlock)
+# 1. 網路架構一：微型 ML 光流微調器 (FlowRefineNet - 滿血加寬版)
 # =========================================================================
 class FlowRefineNet(nn.Module):
     def __init__(self):
         super(FlowRefineNet, self).__init__()
+        # 🚨【通道拓寬】中間層由 12 拓寬至 32，並加深非線性層數，大幅強化對劇烈肢體錯位的修正力
         self.refiner = nn.Sequential(
-            nn.Conv2d(4, 12, kernel_size=3, padding=1),
+            nn.Conv2d(4, 32, kernel_size=3, padding=1),
             nn.GELU(),
-            nn.Conv2d(12, 2, kernel_size=3, padding=1)
+            nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.GELU(),
+            nn.Conv2d(32, 2, kernel_size=3, padding=1)
         )
     def forward(self, t_up_small, t_target_small, flow_small):
         x = torch.cat([t_up_small, t_target_small, flow_small], dim=1)
-        delta_flow = self.refiner(x)
-        return flow_small + delta_flow
+        return flow_small + self.refiner(x)
 
+# =========================================================================
+# 2. 網路架構二：大容量 128 通道金字塔殘差融合網路 (MicroFusionNet - Ultimate Wide)
+# =========================================================================
 class SEBlock(nn.Module):
     def __init__(self, channels, reduction=4):
         super(SEBlock, self).__init__()
@@ -49,7 +54,8 @@ class ResidualBlock(nn.Module):
         super(ResidualBlock, self).__init__()
         self.conv = nn.Sequential(
             nn.Conv2d(channels, channels, kernel_size=3, padding=1), nn.GELU(),
-            nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+            nn.Conv2d(channels, channels, kernel_size=3, padding=1), nn.GELU(),
+            nn.Conv2d(channels, channels, kernel_size=3, padding=1) 
         )
         self.gelu = nn.GELU()
     def forward(self, x):
@@ -58,16 +64,19 @@ class ResidualBlock(nn.Module):
 class MicroFusionNet(nn.Module):
     def __init__(self):
         super(MicroFusionNet, self).__init__()
-        self.conv1 = nn.Conv2d(8, 32, kernel_size=3, padding=1)
-        self.se1 = SEBlock(32)
+        # 🚨【究極解封】第一層特徵寬度直接拉滿至 128 通道 (原本為 32)
+        self.conv1 = nn.Conv2d(8, 128, kernel_size=3, padding=1)
+        self.se1 = SEBlock(128)
         
-        self.conv2_d1 = nn.Sequential(nn.Conv2d(32, 8, kernel_size=3, padding=1, dilation=1), ResidualBlock(8))
-        self.conv2_d5 = nn.Sequential(nn.Conv2d(32, 8, kernel_size=3, padding=5, dilation=5), ResidualBlock(8))
-        self.conv2_d9 = nn.Sequential(nn.Conv2d(32, 8, kernel_size=3, padding=9, dilation=9), ResidualBlock(8))
+        # 🚨【究極解封】ASPP 三路並進分支，每路膨脹 4 倍至 32 通道，搭配 3層深層特徵雕刻，非線性容量大暴增
+        self.conv2_d1 = nn.Sequential(nn.Conv2d(128, 32, kernel_size=3, padding=1, dilation=1), ResidualBlock(32))
+        self.conv2_d5 = nn.Sequential(nn.Conv2d(128, 32, kernel_size=3, padding=5, dilation=5), ResidualBlock(32))
+        self.conv2_d9 = nn.Sequential(nn.Conv2d(128, 32, kernel_size=3, padding=9, dilation=9), ResidualBlock(32))
         
-        self.se2 = SEBlock(24)
-        self.conv3 = nn.Conv2d(24, 16, kernel_size=3, padding=1)
-        self.conv4 = nn.Conv2d(16, 4, kernel_size=3, padding=1)
+        # 拼接後總通道數達 32 * 3 = 96 通道
+        self.se2 = SEBlock(96)
+        self.conv3 = nn.Conv2d(96, 48, kernel_size=3, padding=1)
+        self.conv4 = nn.Conv2d(48, 4, kernel_size=3, padding=1) # 完美固守你獲勝的 3權重+1殘差結構
         self.gelu = nn.GELU()
         self.temp = nn.Parameter(torch.tensor(10.0))
 
@@ -87,9 +96,10 @@ class MicroFusionNet(nn.Module):
         feat3 = self.gelu(self.conv3(feat2))
         
         out = self.conv4(feat3)
+        raw_logits = out[:, :3, :, :]
         delta_res = torch.tanh(out[:, 3:4, :, :]) * 0.05
-        weights = F.softmax(out[:, :3, :, :] * self.temp, dim=1)
         
+        weights = F.softmax(raw_logits * self.temp, dim=1)
         fused_base = (weights[:, 0:1] * t_up) + (weights[:, 1:2] * warped_p) + (weights[:, 2:3] * warped_n)
         return torch.clamp(fused_base + delta_res, 0.0, 1.0), weights
 
@@ -156,11 +166,11 @@ def main():
         {'name': 'Zombie', 'qp': 27, 'base': '../bitstream/base/odd_ZombieClimbing2_27_0_4.layer0.yuv', 'gt': '../orgYUV/odd_Zombie-Climbing2_3840x2160_24fps_10bit_420.yuv'},
         {'name': 'Zombie', 'qp': 37, 'base': '../bitstream/base/odd_ZombieClimbing2_37_0_4.layer0.yuv', 'gt': '../orgYUV/odd_Zombie-Climbing2_3840x2160_24fps_10bit_420.yuv'},
         {'name': 'AMS05', 'qp': 27, 'base': '../bitstream/base/odd_H2_H3_AMS05_27_0_5.layer0.yuv', 'gt': '../orgYUV/odd_H2_H3_AMS05_3840x2160_10bit_420_HLG.yuv'},
-        {'name': 'AMS05', 'qp': 37, 'base': '../bitstream/base/odd_H2_H3_AMS05_37_0_5.layer0.yuv', 'gt': '../orgYUV/odd_H2_H3_AMS05_3840x2160_10bit_420_HLG.yuv'}
-        # {'name': 'WalkInPark', 'qp': 27, 'base': '../bitstream/base/odd_H2_WalkInPark_27_0_4.layer0.yuv', 'gt': '../orgYUV/odd_H2_WalkInPark_3840x2160_10_60fps_HLG.yuv'},
-        # {'name': 'WalkInPark', 'qp': 37, 'base': '../bitstream/base/odd_H2_WalkInPark_37_0_4.layer0.yuv', 'gt': '../orgYUV/odd_H2_WalkInPark_3840x2160_10_60fps_HLG.yuv'},
-        # {'name': 'Procession', 'qp': 25, 'base': '../bitstream/base/odd_Procession_25_0_4.layer0.yuv', 'gt': '../orgYUV/odd_Procession_3840x2160_60fps_10bit_420.yuv'},  
-        # {'name': 'Procession', 'qp': 35, 'base': '../bitstream/base/odd_Procession_35_0_4.layer0.yuv', 'gt': '../orgYUV/odd_Procession_3840x2160_60fps_10bit_420.yuv'}
+        {'name': 'AMS05', 'qp': 37, 'base': '../bitstream/base/odd_H2_H3_AMS05_37_0_5.layer0.yuv', 'gt': '../orgYUV/odd_H2_H3_AMS05_3840x2160_10bit_420_HLG.yuv'},
+        {'name': 'WalkInPark', 'qp': 27, 'base': '../bitstream/base/odd_H2_WalkInPark_27_0_4.layer0.yuv', 'gt': '../orgYUV/odd_H2_WalkInPark_3840x2160_10_60fps_HLG.yuv'},
+        {'name': 'WalkInPark', 'qp': 37, 'base': '../bitstream/base/odd_H2_WalkInPark_37_0_4.layer0.yuv', 'gt': '../orgYUV/odd_H2_WalkInPark_3840x2160_10_60fps_HLG.yuv'},
+        {'name': 'Procession', 'qp': 25, 'base': '../bitstream/base/odd_Procession_25_0_4.layer0.yuv', 'gt': '../orgYUV/odd_Procession_3840x2160_60fps_10bit_420.yuv'},  
+        {'name': 'Procession', 'qp': 35, 'base': '../bitstream/base/odd_Procession_35_0_4.layer0.yuv', 'gt': '../orgYUV/odd_Procession_3840x2160_60fps_10bit_420.yuv'}
     ]
     
     width_base, height_base = 1920, 1080
@@ -173,7 +183,7 @@ def main():
     eps = 1e-6
     optimizer = optim.AdamW(list(fusion_model.parameters()) + list(refine_model.parameters()), lr=1e-3, weight_decay=1e-4)
     
-    epochs = 5
+    epochs = 40
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
     scaler = torch.amp.GradScaler('cuda')
 
