@@ -20,6 +20,7 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+flow_visualize_output/
 
 # IDE and editor files
 .vscode/

@@ -1,0 +1,78 @@
+*In fact it's almost the same as our last bonus. Replace with new execution script, checkpoint under scriptTest folder.
+By using the same environment, you can successfully reproduce our performance!
+*Ensure source existing such as .yuv files under bitstream/enhance and bitstream/base! Or our script can't receive input frames.
+
+Please place the checkpoint file joint_fusion_net_test16.pth and the frame generation script generateAllFrames_test16.py
+under the folder Release_v2/scriptTest.
+(We don't change paths of source files, so enhanced even frames remain in Release_v2/bitstream/enhance and
+base odd frames remain in Release_v2/bitstream/base since we just follow the exact instructions of 
+unzipping the whole project directory and decoding bitstreams)
+
+To run frame generation, please execute:
+
+    python generateAllFrames_test16.py
+
+If executed successfully, it will generate 16 yuv files under the folder:
+
+    Release_v2/bitstream/generated
+
+which corresponds to 4 tasks each with 4 different bitstream quality results.
+
+
+If there is any environment dependency problem:
+
+Try
+
+    pip install --upgrade pip
+    pip install numpy opencv-python tqdm
+    pip install torch torchvision torchaudio
+
+Under your python environment.
+
+
+To successfully reproduce our performance, I also attach our testing scripts for you for simplicity.
+Or you should replace the yuv file paths in the testing code on your own.
+
+For example, in testOddFramesAMS05.py:
+
+replace line 8 with:
+
+    yuvFileListAfter = [
+        '../bitstream/generated/odd_H2_H3_AMS05_27_0_5_gen.layer0.yuv',
+        '../bitstream/generated/odd_H2_H3_AMS05_32_0_5_gen.layer0.yuv',
+        '../bitstream/generated/odd_H2_H3_AMS05_37_0_5_gen.layer0.yuv',
+        '../bitstream/generated/odd_H2_H3_AMS05_42_0_5_gen.layer0.yuv'
+    ]
+
+
+Our current performance for each task after executing all four testOddFrames{Subject}.py,
+Subject = Procession, AMS05, Zombie, and WalkInPark is shown below:
+(You can run our provided shell: run_all_test.sh to execute these four scripts easier)
+
+Procession:
+    
+    PSNR before: [37.600018340491154, 36.44567355492966, 34.848784681705226, 32.816347563985516]
+    PSNR after : [38.81513555866957, 37.45802000608023, 35.515287706566866, 33.281326706151845]
+    Calculated BDrate = -26.828%
+
+AMS05:
+
+    PSNR before: [33.354902657018094, 32.47356390973943, 31.410535115309045, 30.43038560737588]
+    PSNR after : [35.57020289870257, 33.726941217668575, 32.12104601404553, 30.709689088872345]
+    Calculated BDrate = -46.811%
+
+Zombie:
+
+    PSNR before: [35.41576421597525, 33.68034442402233, 31.897469284990915, 30.348210033973228]
+    PSNR after : [36.12870710238663, 34.27971333409098, 32.33425212902758, 30.556808837223713]
+    Calculated BDrate = -18.958%
+
+WalkInPark:
+
+    PSNR before: [35.88446626291224, 34.154505094684744, 32.31940736651056, 30.692211121619913]
+    PSNR after : [37.24047882744752, 35.171687450077684, 33.19968594298756, 31.358720199357315]
+    Calculated BDrate = -32.541%
+
+If there is any mismatch performance or execution problem, freely to contact us and we'll try to resolve immediately.
+
+Our scripts are all developed and tested under wsl2 Ubuntu, supporting both GPU and CPU-only inference.
