@@ -11,8 +11,8 @@ import random
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-FUSION_MODEL_PATH = "joint_fusion_net_test21.pth"
-REFINE_MODEL_PATH = "flow_refine_net_test21.pth"
+FUSION_MODEL_PATH = "joint_fusion_net_test22.pth"
+REFINE_MODEL_PATH = "flow_refine_net_test22.pth"
 PRECOMPUTED_DIR = "./precomputed_flow_pt"
 
 # =========================================================================
