@@ -1,7 +1,7 @@
 # Large video files
 *.yuv
 *.bin
-
+*.mp4
 # Compressed archives
 *.zip
 
